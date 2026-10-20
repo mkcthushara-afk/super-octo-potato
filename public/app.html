@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Site Bill Book</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="top"><div class="topin">
+  <div class="brand" data-go="home" id="brand">Site Bill Book<small>Bills · Payments · Balances</small></div>
+  <nav class="tabs" id="tabs">
+    <button data-go="home">Projects</button>
+    <button data-go="clients">Clients</button>
+    <button data-go="settings">My business</button>
+    <button data-act="logout">Log out</button>
+  </nav>
+</div></header>
+<main class="wrap" id="app"><p class="muted" style="padding-top:24px">Opening your bill book…</p></main>
+<div class="toast" id="toast" hidden></div>
+
+<script src="/vendor/jspdf.umd.min.js"></script>
+<script src="/vendor/jspdf.plugin.autotable.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

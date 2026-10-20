@@ -1,0 +1,22 @@
+{
+  "name": "site-bill-book",
+  "version": "1.0.0",
+  "description": "Billing app for small house-building contractors in Sri Lanka: admin-managed logins, bills, payments and balances in LKR.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.22.3",
+    "jspdf": "^2.5.1",
+    "jspdf-autotable": "^3.8.2",
+    "pg": "^8.23.1"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "private": true
+}

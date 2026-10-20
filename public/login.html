@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Log in · Site Bill Book</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main class="wrap auth">
+  <form class="card" id="loginForm" autocomplete="on">
+    <div>
+      <h1>Site Bill Book</h1>
+      <p class="muted" style="margin:4px 0 0">Bills, payments and balances for your building jobs.</p>
+    </div>
+    <label class="f">Login ID<input name="username" id="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+    <label class="f">Password<input type="password" name="password" id="password" autocomplete="current-password" required></label>
+    <p class="err" id="err" role="alert"></p>
+    <button class="btn pri" type="submit" id="go">Log in</button>
+    <p class="hint" style="margin:0">Your login ID and password are given to you by the administrator. Ask them if you have forgotten your password.</p>
+  </form>
+</main>
+<script src="/login.js"></script>
+</body>
+</html>
