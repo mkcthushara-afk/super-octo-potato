@@ -20,10 +20,12 @@ android {
         buildConfigField 'String', 'APP_HOST', "\"${appHost}\""
     }
 
-    // Every build is signed with the same key so new versions install over old ones.
+    // Builds signed with the same key install over each other. The key comes from the repository's
+    // ANDROID_KEYSTORE_BASE64 secret (see README); without it the build falls back to a temporary debug key.
+    def keystore = file('../signing/sitebillbook.keystore')
     signingConfigs {
         shared {
-            storeFile file('../signing/sitebillbook.keystore')
+            storeFile keystore
             storePassword 'sitebillbook'
             keyAlias 'sitebillbook'
             keyPassword 'sitebillbook'
@@ -32,7 +34,7 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.shared
+            signingConfig keystore.exists() ? signingConfigs.shared : signingConfigs.debug
         }
     }
     buildFeatures { buildConfig true }

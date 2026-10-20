@@ -36,7 +36,7 @@ Render's free plan sleeps when unused, so the first visit after a quiet spell ta
 
 **Install from the browser.** On Android, open the app in Chrome and choose **Add to Home screen** or **Install app**. It opens full screen like any other app.
 
-**Android APK.** `android/` holds a small Android app that opens the online Site Bill Book and adds saving and sharing of bill PDFs (straight to WhatsApp). Build it on GitHub: **Actions → Build Android APK → Run workflow**, enter the app's online address, and download the APK from the finished run. Copy it to a phone and open it to install (Android asks to allow installs from that source the first time). Every build is signed with `android/signing/sitebillbook.keystore`, so new versions install over old ones. Use a separate, secret key if the app is ever published on Google Play.
+**Android APK.** `android/` holds a small Android app that opens the online Site Bill Book and adds saving and sharing of bill PDFs (straight to WhatsApp). Build it on GitHub: **Actions → Build Android APK → Run workflow**, enter the app's online address, and download the APK from the finished run. Copy it to a phone and open it to install (Android asks to allow installs from that source the first time). To let new versions install over old ones, every build must be signed with the same key: add it once as a repository secret named `ANDROID_KEYSTORE_BASE64` (**Settings → Secrets and variables → Actions**), holding the base64 text of a keystore whose alias and passwords are `sitebillbook`. Without the secret, each build uses a temporary key.
 
 ## Security notes
 
