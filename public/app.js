@@ -517,10 +517,14 @@ function stmtPdf(pid){
   footer(ctx, '');
   return doc.output('arraybuffer');
 }
-function canShareFiles(){ try{ return !!(navigator.canShare && navigator.canShare({files:[new File([''], 'x.pdf', {type:'application/pdf'})]})); }catch(e){ return false; } }
+// Inside the Android app, the page hands PDFs to the phone through this bridge.
+const android = window.SiteBillBookAndroid;
+function canShareFiles(){ if(android) return true; try{ return !!(navigator.canShare && navigator.canShare({files:[new File([''], 'x.pdf', {type:'application/pdf'})]})); }catch(e){ return false; } }
+function toBase64(buf){ const bytes = new Uint8Array(buf); let s = ''; for(let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); }
 const pdfName = s => s.replace(/[^\w.\- ]+/g,'_').trim() + '.pdf';
 async function savePdf(make, filename, share){
   if(!window.jspdf || !window.jspdf.jsPDF){ toast('The PDF maker did not load. Reload the page.'); return; }
+  if(android){ try{ android.savePdf(toBase64(make()), pdfName(filename), !!share); }catch(e){ toast('Could not save the PDF.'); } return; }
   const blob = new Blob([make()], {type:'application/pdf'});
   if(share){
     try{ await navigator.share({files:[new File([blob], pdfName(filename), {type:'application/pdf'})], title: filename}); }

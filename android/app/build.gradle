@@ -1,0 +1,47 @@
+plugins {
+    id 'com.android.application'
+}
+
+// The online address of Site Bill Book, passed in when building: gradle assembleRelease -PappUrl=https://...
+def appUrl = (project.findProperty('appUrl') ?: 'https://example.com').toString().replaceAll('/+$', '')
+def appHost = new URI(appUrl).host
+
+android {
+    namespace 'lk.sitebillbook.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'lk.sitebillbook.app'
+        minSdk 26
+        targetSdk 34
+        versionCode((project.findProperty('versionCode') ?: '1').toInteger())
+        versionName((project.findProperty('versionName') ?: '1.0').toString())
+        buildConfigField 'String', 'APP_URL', "\"${appUrl}\""
+        buildConfigField 'String', 'APP_HOST', "\"${appHost}\""
+    }
+
+    // Every build is signed with the same key so new versions install over old ones.
+    signingConfigs {
+        shared {
+            storeFile file('../signing/sitebillbook.keystore')
+            storePassword 'sitebillbook'
+            keyAlias 'sitebillbook'
+            keyPassword 'sitebillbook'
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.shared
+        }
+    }
+    buildFeatures { buildConfig true }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core:1.13.1'
+}

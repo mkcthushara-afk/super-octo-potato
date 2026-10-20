@@ -32,6 +32,12 @@ DATABASE_URL=postgres://user:pass@localhost/sitebill ADMIN_PASSWORD='choose-a-st
 
 Render's free plan sleeps when unused, so the first visit after a quiet spell takes about a minute to open. A paid plan removes that wait.
 
+## Phones
+
+**Install from the browser.** On Android, open the app in Chrome and choose **Add to Home screen** or **Install app**. It opens full screen like any other app.
+
+**Android APK.** `android/` holds a small Android app that opens the online Site Bill Book and adds saving and sharing of bill PDFs (straight to WhatsApp). Build it on GitHub: **Actions → Build Android APK → Run workflow**, enter the app's online address, and download the APK from the finished run. Copy it to a phone and open it to install (Android asks to allow installs from that source the first time). Every build is signed with `android/signing/sitebillbook.keystore`, so new versions install over old ones. Use a separate, secret key if the app is ever published on Google Play.
+
 ## Security notes
 
 Passwords are stored as bcrypt hashes. Sessions are random tokens kept as SHA-256 hashes in the database, in an HTTP-only cookie. Repeated wrong logins are blocked for 15 minutes. Every data query is scoped to the logged-in contractor's account.
