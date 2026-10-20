@@ -3,6 +3,7 @@ services:
     name: site-bill-book
     runtime: node
     plan: free
+    region: singapore
     buildCommand: npm ci
     startCommand: npm start
     envVars:
