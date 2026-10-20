@@ -5,7 +5,7 @@ A billing app for small house-building contractors in Sri Lanka. Contractors mak
 ## Who does what
 
 - **Administrator** logs in at `/login` and lands on `/admin`. They add each contractor with a company name (optional; the person's name is used when there is none), the contractor's name, address, phone, a login ID and a password. They can edit details, reset a password, or switch a login off. Admins see how many projects and bills each contractor has, never the bills themselves.
-- **Contractor** logs in with the ID and password from the administrator and lands on `/app`, their own bill book: clients, projects, bills, quotations, payments and a running account statement. Their bill header is pre-filled from what the administrator entered, and they can change it and their password under **My business**.
+- **Contractor** logs in with the ID and password from the administrator and lands on `/app`, their own bill book: clients, projects, bills, quotations, payments and a running account statement. Bills are built from a drop-down of about 100 standard house-building items in English and Sinhala (`public/catalog.js`), grouped into 17 stages from site preparation to external works, with a total for each stage. Contractors can add their own items, which are saved for reuse. Bill numbers are the client's first two letters, the contractor's first two letters and one running number, e.g. `KA-PE-0003`. Their bill header is pre-filled from what the administrator entered, and they can change it and their password under **My business**.
 
 ## Running it
 

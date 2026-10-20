@@ -9,7 +9,7 @@ const { Pool } = require('pg');
 const PORT = process.env.PORT || 3000;
 const COOKIE = 'sbb_session';
 const SESSION_DAYS = 30;
-const COLLECTIONS = new Set(['clients', 'projects', 'bills', 'payments']);
+const COLLECTIONS = new Set(['clients', 'projects', 'bills', 'payments', 'items']);
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,39}$/;
 const secureCookie = process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === 'true' : process.env.NODE_ENV === 'production';
@@ -179,7 +179,7 @@ app.post('/api/me/password', auth(), wrap(async (req, res) => {
 /* ---------- contractor bill book data (always scoped to the logged-in account) ---------- */
 app.get('/api/data', auth('contractor'), wrap(async (req, res) => {
   const { rows } = await pool.query(`SELECT collection, id, data FROM records WHERE account_id = $1`, [req.account.id]);
-  const out = { clients: [], projects: [], bills: [], payments: [], settings: req.account.settings || {} };
+  const out = { clients: [], projects: [], bills: [], payments: [], items: [], settings: req.account.settings || {} };
   rows.forEach(r => out[r.collection] && out[r.collection].push({ ...r.data, id: r.id }));
   res.json(out);
 }));
@@ -207,7 +207,7 @@ app.delete('/api/records/:col/:id', auth('contractor'), wrap(async (req, res) =>
   res.json({ ok: true });
 }));
 app.put('/api/settings', auth('contractor'), wrap(async (req, res) => {
-  const allowed = ['name', 'owner', 'phone', 'email', 'address', 'reg', 'bank', 'branch', 'accName', 'accNo', 'terms'];
+  const allowed = ['name', 'owner', 'phone', 'email', 'address', 'reg', 'bank', 'branch', 'accName', 'accNo', 'terms', 'lastBillNo'];
   const s = {};
   allowed.forEach(k => { if (req.body[k] != null) s[k] = str(req.body[k], 1000); });
   await pool.query(`UPDATE accounts SET settings = $1 WHERE id = $2`, [s, req.account.id]);

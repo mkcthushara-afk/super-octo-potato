@@ -1,27 +1,12 @@
-const COLS = ['clients','projects','bills','payments'];
-const S = {clients:[],projects:[],bills:[],payments:[],settings:{},loaded:false,mode:'pending'};
+const COLS = ['clients','projects','bills','payments','items'];
+const S = {clients:[],projects:[],bills:[],payments:[],items:[],settings:{},loaded:false,mode:'pending'};
 let view = {name:'home'}, draft = null, filter = 'Active';
 const $app = document.getElementById('app');
 
-const TYPES = {'Invoice':'INV','Running bill':'RB','Quotation':'QT'};
-const CATS = ['Labour','Material','Equipment','Other'];
-const UNITS = ['nos','days','bags','cube','sq.ft','ft','m','sq.m','kg','L','perch','lump sum'];
+const TYPES = ['Running bill','Invoice','Quotation'];
 const METHODS = ['Cash','Bank transfer','Cheque','Online / card'];
-const PRESETS = [
-  {desc:'Mason (baas) wages',cat:'Labour',unit:'days'},
-  {desc:'Helper / labourer wages',cat:'Labour',unit:'days'},
-  {desc:'Carpenter wages',cat:'Labour',unit:'days'},
-  {desc:'Bar bender wages',cat:'Labour',unit:'days'},
-  {desc:'Plastering',cat:'Labour',unit:'sq.ft'},
-  {desc:'Cement 50kg',cat:'Material',unit:'bags'},
-  {desc:'Sand',cat:'Material',unit:'cube'},
-  {desc:'Metal 3/4"',cat:'Material',unit:'cube'},
-  {desc:'Bricks',cat:'Material',unit:'nos'},
-  {desc:'Cement blocks 6"',cat:'Material',unit:'nos'},
-  {desc:'Steel (tor) bars',cat:'Material',unit:'kg'},
-  {desc:'Concrete mixer hire',cat:'Equipment',unit:'days'},
-  {desc:'Transport',cat:'Other',unit:'lump sum'},
-];
+// Lines saved before stages existed carry a category instead.
+const LEGACY = {Labour:'labour', Material:'material', Equipment:'equip', Other:'other'};
 
 /* ---------- helpers ---------- */
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -40,6 +25,20 @@ const billTotal = b => billSub(b) - n(b.discount);
 const counts = b => b.type !== 'Quotation';
 const sortKey = x => (x.date||'') + '|' + String(x.createdAt||0).padStart(15,'0');
 
+const stageOf = id => STAGES.find(s => s.id === id) || STAGES[STAGES.length-1];
+const lineStage = it => it.stage || LEGACY[it.cat] || 'other';
+const unitSi = u => (UNITS.find(x => x[0] === u) || [])[1] || '';
+const ownItems = () => S.items.map(x => ({code: 'U:' + x.id, stage: x.stage, en: x.en, si: x.si, unit: x.unit, rate: x.rate, own: true}));
+const allItems = () => [...CATALOG, ...ownItems()];
+const findItem = code => allItems().find(x => x.code === code);
+const isBlank = it => !it.code && !it.desc && !n(it.qty) && !n(it.rate);
+// The rate this contractor used last time for an item, so they don't retype it.
+function lastRate(code){
+  let best = null;
+  S.bills.forEach(b => (b.items||[]).forEach(it => { if(it.code === code && n(it.rate) && (!best || sortKey(b) > best.k)) best = {k: sortKey(b), rate: it.rate}; }));
+  return best ? best.rate : '';
+}
+
 function projectStats(pid){
   const bills = S.bills.filter(b => b.projectId === pid && counts(b));
   const pays = S.payments.filter(p => p.projectId === pid);
@@ -53,11 +52,17 @@ function accountAt(b){
   const paid = S.payments.filter(p => p.projectId === b.projectId && (p.date||'') <= (b.date||'')).reduce((a,p) => a + n(p.amount), 0);
   return {previous: billed - billTotal(b), billed, paid, balance: billed - paid};
 }
-function nextNo(type){
-  const pre = TYPES[type] || 'INV';
-  let max = 0;
-  S.bills.forEach(b => { const m = String(b.no||'').match(new RegExp('^'+pre+'-(\\d+)$')); if(m) max = Math.max(max, +m[1]); });
-  return pre + '-' + String(max+1).padStart(4,'0');
+// Bill numbers: client's first two letters, contractor's first two letters, then one running number
+// for all of this contractor's bills, e.g. FE-PE-0001. The number never goes back, even if a bill is deleted.
+function letters(name){
+  const s = String(name||'').replace(/^\s*((mr|mrs|ms|miss|dr|rev|prof|messrs)\.?\s+)+/i, '').replace(/[^A-Za-z]/g, '').toUpperCase();
+  return (s + 'XX').slice(0, 2);
+}
+const seqOf = no => { const m = String(no||'').match(/(\d+)\s*$/); return m ? +m[1] : 0; };
+function nextNo(projectId){
+  const p = byId('projects', projectId) || {}, c = byId('clients', p.clientId) || {};
+  const max = Math.max(n(S.settings.lastBillNo), ...S.bills.map(b => seqOf(b.no)));
+  return `${letters(c.name)}-${letters(S.settings.name || (S.me && (S.me.companyName || S.me.personName)))}-${String(max + 1).padStart(4, '0')}`;
 }
 function toast(msg){ const t = document.getElementById('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 2600); }
 
@@ -193,9 +198,10 @@ function delBlock(kind, id, label, warn){
 const notFound = () => `<button class="back" data-go="home">← Projects</button><div class="empty"><p class="muted" style="margin:0">This record was deleted or is still loading.</p></div>`;
 
 function groupedItems(b){
-  const out = [];
-  CATS.forEach(cat => { const its = (b.items||[]).filter(it => (it.cat||'Other') === cat && (it.desc || n(it.qty) || n(it.rate))); if(its.length) out.push({cat, its}); });
-  return out;
+  return STAGES.map(st => {
+    const its = (b.items||[]).filter(it => lineStage(it) === st.id && !isBlank(it));
+    return {stage: st, its, total: its.reduce((a,it) => a + lineAmt(it), 0)};
+  }).filter(g => g.its.length);
 }
 function vBill(){
   const b = byId('bills', view.id); if(!b) return notFound();
@@ -220,11 +226,11 @@ function vBill(){
       <div><div class="eyebrow">Bill to</div><b>${esc(c.name||'')}</b><div class="muted">${[c.address, c.phone].filter(Boolean).map(esc).join('<br>')}</div></div>
       <div><div class="eyebrow">Project / site</div><b>${esc(p.name||'')}</b><div class="muted">${esc(p.site||'')}</div>${b.title?`<div style="margin-top:4px">${esc(b.title)}</div>`:''}</div>
     </div>
-    <div class="tbl"><table><thead><tr><th>#</th><th>Description</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">Amount</th></tr></thead><tbody>
-      ${groups.map(g => `<tr class="grp"><td colspan="5">${g.cat}</td></tr>` + g.its.map(it => `<tr><td class="muted">${++i}</td><td>${esc(it.desc)}</td><td class="n">${esc(it.qty)} <span class="muted">${esc(it.unit)}</span></td><td class="n">${money(it.rate)}</td><td class="n">${money(lineAmt(it))}</td></tr>`).join('')).join('')}
+    <div class="tbl"><table><thead><tr><th class="idx">#</th><th>Description</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">Amount</th></tr></thead><tbody>
+      ${groups.map(g => `<tr class="grp"><td colspan="5">${esc(g.stage.en)} <span class="si">${esc(g.stage.si)}</span></td></tr>` + g.its.map(it => `<tr><td class="muted idx">${++i}</td><td>${esc(it.desc)}${it.si ? `<div class="si">${esc(it.si)}</div>` : ''}</td><td class="n">${esc(it.qty)} <span class="muted">${esc(it.unit)}</span></td><td class="n">${money(it.rate)}</td><td class="n">${money(lineAmt(it))}</td></tr>`).join('') + `<tr class="sub"><td class="idx"></td><td colspan="3">${esc(g.stage.en)} total</td><td class="n">${money(g.total)}</td></tr>`).join('')}
     </tbody></table></div>
     <div class="sumbox">
-      ${CATS.map(cat => { const t = (b.items||[]).filter(it => (it.cat||'Other')===cat).reduce((a,it)=>a+lineAmt(it),0); return t ? `<span class="k">${cat}</span><span class="num">${money(t)}</span>` : ''; }).join('')}
+      ${groups.length > 1 ? groups.map(g => `<span class="k">${esc(g.stage.en)}</span><span class="num">${money(g.total)}</span>`).join('') : ''}
       ${n(b.discount) ? `<span class="k">Less discount</span><span class="num">−${money(b.discount)}</span>` : ''}
       <span class="tot">${b.type==='Quotation'?'Quoted total':'This bill'}</span><span class="tot num">${rs(billTotal(b))}</span>
     </div>
@@ -240,12 +246,34 @@ function vBill(){
   ${delBlock('bill', b.id, 'Delete this bill', 'This bill will be removed from the project account.')}`;
 }
 
-function blankItem(){ return {desc:'',cat:'Material',qty:'',unit:'nos',rate:''}; }
+function blankItem(){ return {code:'', stage:'', desc:'', si:'', qty:'', unit:'nos', rate:''}; }
+function itemOptions(sel){
+  return `<option value="">Choose an item…</option>` + STAGES.map(st => {
+    const its = allItems().filter(x => x.stage === st.id);
+    return its.length ? `<optgroup label="${esc(st.en)} · ${esc(st.si)}">${its.map(x => `<option value="${esc(x.code)}" ${x.code === sel ? 'selected' : ''}>${esc(x.en)} · ${esc(x.si)}${x.own ? ' (mine)' : ''}</option>`).join('')}</optgroup>` : '';
+  }).join('') + `<option value="__new">+ Add a new item…</option>`;
+}
+function newItemCard(){
+  const it = draft.items[draft.newFor] || {};
+  return `<div class="card newitem">
+    <b>Add your own item</b>
+    <p class="hint" style="margin:0">It is saved to your list, so you can pick it again on any bill.</p>
+    <div class="grid2">
+      <label class="f">Item name (English)<input id="ni-en" value="${esc(it.desc)}" placeholder="e.g. Pantry cupboard"></label>
+      <label class="f">Sinhala name (optional)<input id="ni-si" placeholder="e.g. කුස්සි අල්මාරිය"></label>
+      <label class="f">Stage<select id="ni-stage">${STAGES.map(st => `<option value="${st.id}" ${st.id === (lineStage(it) || 'other') ? 'selected' : ''}>${esc(st.en)} · ${esc(st.si)}</option>`).join('')}</select></label>
+      <label class="f">Unit<select id="ni-unit">${UNITS.map(([u, si]) => `<option value="${u}" ${u === it.unit ? 'selected' : ''}>${u} · ${si}</option>`).join('')}</select></label>
+      <label class="f">Usual rate (Rs, optional)<input id="ni-rate" inputmode="decimal" value="${esc(it.rate)}"></label>
+    </div>
+    <div class="row"><button type="button" class="btn pri sm" data-act="saveNewItem">Save item</button><button type="button" class="btn sm" data-act="cancelNewItem">Cancel</button></div>
+  </div>`;
+}
 function vBillEdit(){
   if(!draft){
     if(view.id){ const b = byId('bills', view.id); if(!b) return notFound(); draft = JSON.parse(JSON.stringify(b)); }
-    else if(view.from){ const s = byId('bills', view.from); draft = JSON.parse(JSON.stringify(s)); delete draft.id; delete draft.createdAt; delete draft.example; draft.date = today(); draft.no = nextNo(draft.type); }
-    else { const pid = view.pid || (S.projects.find(p => (p.status||'Active') === 'Active') || S.projects[0] || {}).id; draft = {projectId: pid, type:'Running bill', no: nextNo('Running bill'), date: today(), title:'', items:[blankItem()], discount:'', notes:''}; }
+    else if(view.from){ const s = byId('bills', view.from); draft = JSON.parse(JSON.stringify(s)); delete draft.id; delete draft.createdAt; delete draft.example; draft.date = today(); draft.no = nextNo(draft.projectId); }
+    else { const pid = view.pid || (S.projects.find(p => (p.status||'Active') === 'Active') || S.projects[0] || {}).id; draft = {projectId: pid, type:'Running bill', no: nextNo(pid), date: today(), title:'', items:[blankItem()], discount:'', notes:''}; }
+    draft.items.forEach(it => { if(!it.stage) it.stage = lineStage(it); });
   }
   const d = draft;
   const backTo = d.id ? `data-go="bill" data-id="${d.id}"` : d.projectId && view.pid ? `data-go="project" data-id="${d.projectId}"` : 'data-go="home"';
@@ -254,21 +282,20 @@ function vBillEdit(){
   <form class="card" id="billForm">
     <div class="grid2">
       <label class="f">Project<select data-f="projectId" id="b-project" required>${S.projects.map(p => `<option value="${p.id}" ${p.id===d.projectId?'selected':''}>${esc(p.name)} – ${esc((byId('clients',p.clientId)||{}).name||'')}</option>`).join('')}</select></label>
-      <label class="f">Type<select data-f="type" id="b-type">${Object.keys(TYPES).map(t => `<option ${t===d.type?'selected':''}>${t}</option>`).join('')}</select></label>
-      <label class="f">Bill number<input data-f="no" id="b-no" value="${esc(d.no)}" required></label>
+      <label class="f">Type<select data-f="type" id="b-type">${TYPES.map(t => `<option ${t===d.type?'selected':''}>${t}</option>`).join('')}</select></label>
+      <label class="f">Bill number<input data-f="no" id="b-no" value="${esc(d.no)}" required><span class="hint">Client letters, your letters, then the next number.</span></label>
       <label class="f">Date<input type="date" data-f="date" id="b-date" value="${esc(d.date)}" required></label>
     </div>
     <label class="f">Work covered (optional)<input data-f="title" id="b-title" value="${esc(d.title)}" placeholder="e.g. Foundation and DPC level, week of 14 Oct"></label>
-    <div><div class="eyebrow" style="margin-bottom:6px">Quick add</div><div class="chips">${PRESETS.map((p,i) => `<button type="button" class="chip" data-preset="${i}">${esc(p.desc)}</button>`).join('')}</div></div>
+    <div class="eyebrow">Items · අයිතම</div>
     <div class="lines">${d.items.map((it,i) => `<div class="line">
-      <label class="d">Description<input data-i="${i}" data-if="desc" id="it-${i}-d" value="${esc(it.desc)}" list="descs" placeholder="Item or work done"></label>
-      <label class="c">Type<select data-i="${i}" data-if="cat" id="it-${i}-c">${CATS.map(c => `<option ${c===it.cat?'selected':''}>${c}</option>`).join('')}</select></label>
+      <label class="d">Item<select data-i="${i}" data-pick="1" id="it-${i}-k">${itemOptions(it.code)}</select></label>
+      <label class="d">Description on bill<input data-i="${i}" data-if="desc" id="it-${i}-d" value="${esc(it.desc)}" placeholder="Choose an item above, or type your own"></label>
       <label>Qty<input data-i="${i}" data-if="qty" id="it-${i}-q" value="${esc(it.qty)}" inputmode="decimal"></label>
-      <label>Unit<select data-i="${i}" data-if="unit" id="it-${i}-u">${UNITS.map(u => `<option ${u===it.unit?'selected':''}>${u}</option>`).join('')}</select></label>
-      <label class="rt">Rate (Rs)<input data-i="${i}" data-if="rate" id="it-${i}-r" value="${esc(it.rate)}" inputmode="decimal"></label>
-      <div class="amtw" style="display:flex;align-items:end;gap:4px;justify-content:flex-end"><span class="amt" id="amt-${i}"></span><button type="button" class="x" data-rmitem="${i}" aria-label="Remove line">×</button></div>
-    </div>`).join('')}</div>
-    <datalist id="descs">${PRESETS.map(p => `<option value="${esc(p.desc)}">`).join('')}</datalist>
+      <label>Unit<select data-i="${i}" data-if="unit" id="it-${i}-u">${UNITS.map(([u, si]) => `<option value="${u}" ${u===it.unit?'selected':''}>${u} · ${si}</option>`).join('')}</select></label>
+      <label>Rate (Rs)<input data-i="${i}" data-if="rate" id="it-${i}-r" value="${esc(it.rate)}" inputmode="decimal"></label>
+      <div class="amtw"><span class="amt" id="amt-${i}"></span><button type="button" class="x" data-rmitem="${i}" aria-label="Remove line">×</button></div>
+    </div>${d.newFor === i ? newItemCard() : ''}`).join('')}</div>
     <div><button type="button" class="btn sm" data-act="addItem">+ Add line</button></div>
     <div class="grid2">
       <label class="f">Discount (Rs)<input data-f="discount" id="b-disc" value="${esc(d.discount)}" inputmode="decimal"></label>
@@ -282,8 +309,10 @@ function recalc(){
   if(!draft) return;
   draft.items.forEach((it,i) => { const e = document.getElementById('amt-'+i); if(e) e.textContent = money(lineAmt(it)); });
   const t = document.getElementById('totals'); if(!t) return;
-  const sub = billSub(draft);
-  t.innerHTML = `<div><span class="muted">Subtotal</span><span class="num">${money(sub)}</span></div>${n(draft.discount)?`<div><span class="muted">Discount</span><span class="num">−${money(draft.discount)}</span></div>`:''}<div class="big"><span>Total</span><span class="num">${rs(billTotal(draft))}</span></div>`;
+  const groups = groupedItems(draft);
+  t.innerHTML = groups.map(g => `<div><span class="muted">${esc(g.stage.en)}</span><span class="num">${money(g.total)}</span></div>`).join('')
+    + (n(draft.discount) ? `<div><span class="muted">Discount</span><span class="num">−${money(draft.discount)}</span></div>` : '')
+    + `<div class="big"><span>Total</span><span class="num">${rs(billTotal(draft))}</span></div>`;
 }
 
 function vPayEdit(){
@@ -376,6 +405,10 @@ function vSettings(){
     <label class="f">Default note on bills<textarea name="terms" id="s-terms" placeholder="e.g. Please settle within 7 days. Materials remain our property until paid.">${esc(s.terms)}</textarea></label>
     <div class="row"><button class="btn pri" type="submit">Save details</button></div>
   </form>
+  <h2 style="margin-top:28px">My items</h2>
+  <p class="muted" style="margin:4px 0 12px">Items you added yourself. Add more from any bill with "+ Add a new item…" in the item list.</p>
+  ${S.items.length ? `<div class="list">${[...S.items].sort((a,b) => (a.en||'').localeCompare(b.en||'')).map(x => `<div class="item" style="cursor:default"><div class="main"><div class="t">${esc(x.en)}${x.si ? ` <span class="si">${esc(x.si)}</span>` : ''}</div><div class="s">${esc(stageOf(x.stage).en)} · ${esc(x.unit)}${n(x.rate) ? ' · Rs. ' + money(x.rate) : ''}</div></div><button class="btn ghost sm" data-act="del-item" data-id="${x.id}">Remove</button></div>`).join('')}</div>`
+    : `<div class="empty"><p class="muted" style="margin:0">You haven't added any items of your own yet.</p></div>`}
   <h2 style="margin-top:28px">Your login</h2>
   <p class="muted" style="margin:4px 0 12px">Login ID: <span class="num">${esc(S.me && S.me.username)}</span></p>
   <form class="card" id="pwForm">
@@ -395,7 +428,7 @@ async function copy(text){
 function billText(b){
   const p = byId('projects', b.projectId)||{}, c = byId('clients', p.clientId)||{}, biz = S.settings;
   const L = [`*${biz.name || 'Bill'}*`, `${b.type} ${b.no} · ${fdate(b.date)}`, `To: ${c.name||''}`, `Project: ${p.name||''}`]; if(b.title) L.push(`Work: ${b.title}`); L.push('');
-  groupedItems(b).forEach(g => { L.push(`_${g.cat}_`); g.its.forEach(it => L.push(`• ${it.desc}: ${it.qty} ${it.unit} × ${money(it.rate)} = ${money(lineAmt(it))}`)); });
+  groupedItems(b).forEach(g => { L.push(`_${g.stage.en} · ${g.stage.si}_`); g.its.forEach(it => L.push(`• ${it.desc}${it.si ? ' (' + it.si + ')' : ''}: ${it.qty} ${it.unit} × ${money(it.rate)} = ${money(lineAmt(it))}`)); L.push(`  ${g.stage.en} total: ${money(g.total)}`, ''); });
   if(n(b.discount)) L.push(`Discount: −${money(b.discount)}`);
   L.push('', `*${b.type==='Quotation'?'Quoted total':'This bill'}: ${rs(billTotal(b))}*`);
   if(counts(b)){ const a = accountAt(b); L.push(`Previous bills: ${money(a.previous)}`, `Paid to date: ${money(a.paid)}`, `*Balance due: ${rs(a.balance)}*`); }
@@ -455,11 +488,16 @@ function billPdf(b){
   const ctx = pdfBase(b.type, b.no, b.date); const {doc, M} = ctx;
   partyBlock(ctx, c, p, b.title);
   let i = 0; const body = [];
-  groupedItems(b).forEach(g => { body.push([{content: g.cat.toUpperCase(), colSpan: 6, styles:{fillColor:[238,242,240], fontStyle:'bold', fontSize:8, textColor:90}}]); g.its.forEach(it => body.push([++i, it.desc||'', it.qty||'', it.unit||'', money(it.rate), money(lineAmt(it))])); });
+  const groups = groupedItems(b);
+  groups.forEach(g => {
+    body.push([{content: g.stage.en.toUpperCase(), colSpan: 6, styles:{fillColor:[238,242,240], fontStyle:'bold', fontSize:8, textColor:90}}]);
+    g.its.forEach(it => body.push([++i, it.desc||'', it.qty||'', it.unit||'', money(it.rate), money(lineAmt(it))]));
+    body.push([{content: g.stage.en + ' total', colSpan: 5, styles:{halign:'right', fontStyle:'bold'}}, {content: money(g.total), styles:{halign:'right', fontStyle:'bold'}}]);
+  });
   doc.autoTable({...tableStyle(M), startY: ctx.y, head:[['#','Description','Qty','Unit','Rate (Rs)','Amount (Rs)']], body,
     columnStyles:{0:{cellWidth:8}, 2:{halign:'right', cellWidth:16}, 3:{cellWidth:18}, 4:{halign:'right', cellWidth:26}, 5:{halign:'right', cellWidth:30}}});
   ctx.y = doc.lastAutoTable.finalY + 8;
-  const rows = []; CATS.forEach(cat => { const t = (b.items||[]).filter(it => (it.cat||'Other')===cat).reduce((a,it)=>a+lineAmt(it),0); if(t) rows.push([cat, money(t)]); });
+  const rows = groups.length > 1 ? groups.map(g => [g.stage.en, money(g.total)]) : [];
   if(n(b.discount)) rows.push(['Less discount', '-' + money(b.discount)]);
   rows.push([b.type==='Quotation' ? 'Quoted total' : 'This bill', rs(billTotal(b)), true]);
   sumRows(ctx, rows);
@@ -495,19 +533,27 @@ async function savePdf(make, filename, share){
 
 /* ---------- events ---------- */
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-go],[data-act],[data-filter],[data-preset],[data-rmitem]'); if(!t) return;
+  const t = e.target.closest('[data-go],[data-act],[data-filter],[data-rmitem]'); if(!t) return;
   const id = t.dataset.id;
   if(t.dataset.filter){ filter = t.dataset.filter; render(); return; }
-  if(t.dataset.preset !== undefined){ const pr = PRESETS[+t.dataset.preset]; const last = draft.items[draft.items.length-1]; const it = {...blankItem(), desc:pr.desc, cat:pr.cat, unit:pr.unit};
-    if(last && !last.desc && !n(last.qty) && !n(last.rate)) draft.items[draft.items.length-1] = it; else draft.items.push(it); render(); const q = document.getElementById('it-'+(draft.items.length-1)+'-q'); if(q) q.focus(); return; }
-  if(t.dataset.rmitem !== undefined){ draft.items.splice(+t.dataset.rmitem, 1); if(!draft.items.length) draft.items.push(blankItem()); render(); return; }
+  if(t.dataset.rmitem !== undefined){ draft.items.splice(+t.dataset.rmitem, 1); if(!draft.items.length) draft.items.push(blankItem()); draft.newFor = null; render(); return; }
   if(t.dataset.go){ go(t.dataset.go, {id, cid: t.dataset.cid}); return; }
   const a = t.dataset.act;
   if(a === 'newBill'){ if(!S.projects.length){ go('projectEdit'); return; } go('billEdit', {pid: id}); }
   else if(a === 'newPay'){ go('payEdit', {pid: id}); }
   else if(a === 'editBill'){ go('billEdit', {id}); }
   else if(a === 'dupBill'){ go('billEdit', {from: id}); }
-  else if(a === 'addItem'){ const last = draft.items[draft.items.length-1]; draft.items.push({...blankItem(), cat: last ? last.cat : 'Material'}); render(); const d = document.getElementById('it-'+(draft.items.length-1)+'-d'); if(d) d.focus(); }
+  else if(a === 'addItem'){ draft.items.push(blankItem()); render(); const k = document.getElementById('it-'+(draft.items.length-1)+'-k'); if(k) k.focus(); }
+  else if(a === 'cancelNewItem'){ draft.newFor = null; render(); }
+  else if(a === 'saveNewItem'){
+    const v = k => document.getElementById('ni-' + k).value.trim();
+    if(!v('en')){ toast('Enter the item name.'); return; }
+    const item = {en: v('en'), si: v('si'), stage: v('stage'), unit: v('unit'), rate: v('rate')};
+    try{ const nid = await put('items', item); const it = draft.items[draft.newFor];
+      Object.assign(it, {code: 'U:' + nid, stage: item.stage, desc: item.en, si: item.si, unit: item.unit, rate: it.rate || item.rate});
+      draft.newFor = null; render(); toast('Item added to your list.'); const q = document.getElementById('it-' + draft.items.indexOf(it) + '-q'); if(q) q.focus(); }catch(x){}
+  }
+  else if(a === 'del-item'){ try{ await remove('items', id); toast('Item removed. Old bills keep it.'); render(); }catch(x){} }
   else if(a === 'confirm'){ view.confirm = id; render(); }
   else if(a === 'unconfirm'){ view.confirm = null; render(); }
   else if(a === 'billText'){ copy(billText(byId('bills', id))); }
@@ -528,13 +574,20 @@ document.addEventListener('input', e => {
   const t = e.target; if(!draft) return;
   if(t.dataset.f){ draft[t.dataset.f] = t.value; if(t.dataset.f === 'discount') recalc(); }
   else if(t.dataset.if){ const it = draft.items[+t.dataset.i]; it[t.dataset.if] = t.value;
-    if(t.dataset.if === 'desc'){ const pr = PRESETS.find(p => p.desc === t.value); if(pr){ it.cat = pr.cat; it.unit = pr.unit; document.getElementById('it-'+t.dataset.i+'-c').value = pr.cat; document.getElementById('it-'+t.dataset.i+'-u').value = pr.unit; } }
     recalc(); }
 });
 document.addEventListener('change', e => {
   const t = e.target;
   if(t.id === 'pr-client') document.getElementById('newClient').hidden = t.value !== '__new';
-  if(t.id === 'b-type' && draft && !draft.id){ draft.no = nextNo(t.value); document.getElementById('b-no').value = draft.no; }
+  if(t.id === 'b-project' && draft && !draft.id){ draft.no = nextNo(t.value); document.getElementById('b-no').value = draft.no; }
+  if(t.dataset.pick && draft){
+    const i = +t.dataset.i, it = draft.items[i];
+    if(t.value === '__new'){ draft.newFor = i; render(); const en = document.getElementById('ni-en'); if(en) en.focus(); return; }
+    const x = findItem(t.value);
+    if(x){ Object.assign(it, {code: x.code, stage: x.stage, desc: x.en, si: x.si, unit: x.unit, rate: lastRate(x.code) || x.rate || it.rate}); }
+    else Object.assign(it, {code: '', si: ''});
+    draft.newFor = null; render(); const q = document.getElementById('it-'+i+'-q'); if(q) q.focus();
+  }
 });
 document.addEventListener('submit', async e => {
   e.preventDefault();
@@ -543,9 +596,12 @@ document.addEventListener('submit', async e => {
   try{
     if(f.id === 'billForm'){
       if(!draft.projectId){ toast('Pick a project first.'); return; }
-      draft.items = draft.items.filter(it => it.desc || n(it.qty) || n(it.rate));
+      draft.items = draft.items.filter(it => !isBlank(it)).map(it => ({...it, stage: lineStage(it)}));
+      delete draft.newFor;
       if(!draft.items.length){ draft.items.push(blankItem()); toast('Add at least one line.'); return; }
+      const isNew = !draft.id;
       const id = await put('bills', draft);
+      if(isNew && seqOf(draft.no) > n(S.settings.lastBillNo)) await putSettings({...S.settings, lastBillNo: seqOf(draft.no)});
       const p = byId('projects', draft.projectId); if(p) await put('projects', p);
       toast('Bill saved.'); go('bill', {id});
     } else if(f.id === 'payForm'){
